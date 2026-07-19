@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Repo Reality Check — scoring tests</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  .pass { color: #1a7f37; }
+  .fail { color: #cf222e; font-weight: bold; }
+  pre { background: #f6f8fa; padding: 8px 12px; border-radius: 6px; overflow-x: auto; }
+  li { margin-bottom: 0.5rem; }
+</style>
+</head>
+<body>
+<h1>Repo Reality Check — scoring tests</h1>
+<p>Open this file directly in a browser (no server needed). All lines should be green.</p>
+<ul id="results"></ul>
+<script src="scoring.js"></script>
+<script src="test-cases.js"></script>
+<script>
+  const ul = document.getElementById('results');
+  for (const r of runScoringTests(computeScore)) {
+    const li = document.createElement('li');
+    li.className = r.ok ? 'pass' : 'fail';
+    li.textContent = (r.ok ? 'PASS — ' : 'FAIL — ') + r.name + ' — ' + r.detail;
+    ul.appendChild(li);
+  }
+</script>
+</body>
+</html>

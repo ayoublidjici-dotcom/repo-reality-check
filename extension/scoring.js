@@ -11,7 +11,12 @@
  *     parent: { full_name } | undefined
  *   },
  *   contributors: [{ login, contributions }, ...],   // top 10, may be []
+ *   contributorsUnavailable: boolean, // true when the API refused/failed to
+ *                                     // list contributors (e.g. GitHub's
+ *                                     // "list too large" 403 on huge repos)
  *   hasRelease: boolean,
+ *   hasTags: boolean,  // fallback signal — projects like torvalds/linux tag
+ *                      // every version but never publish GitHub releases
  *   readme: string | null,
  *   starBurst: boolean,
  *   now: optional ms timestamp (defaults to Date.now(), injectable for tests)
@@ -78,23 +83,35 @@ function computeScore(data) {
     }
   }
 
-  // Stars vs substance.
-  if (stars > 5000 && sumTop10 < 500) {
-    deduct(15, 'stars-vs-substance', 'red',
-      'Stars vs substance: ' + stars.toLocaleString() +
-      ' stars but only ' + sumTop10 + ' total contributions from the top 10 contributors.');
-  }
-  if (stars > 20000 && contributors.length < 3) {
-    deduct(15, 'stars-vs-contributors', 'red',
-      'Stars vs substance: ' + stars.toLocaleString() +
-      ' stars but only ' + contributors.length + ' contributor' +
-      (contributors.length === 1 ? '' : 's') + ' listed.');
+  // Stars vs substance. Two exemptions guard against false positives:
+  //  - no verdict without data: when the contributors API refused to answer
+  //    (GitHub won't list contributors for huge repos like torvalds/linux),
+  //    an empty list says nothing about substance;
+  //  - old, established projects: 5+ years old with a full top-10 roster can
+  //    legitimately pair massive stars with modest top-10 sums.
+  const contributorsKnown = !data.contributorsUnavailable && contributors.length > 0;
+  const ageDays = repo.created_at
+    ? (now - Date.parse(repo.created_at)) / 86400000 : 0;
+  const establishedProject = ageDays > 5 * 365 && contributors.length >= 10;
+  if (contributorsKnown && !establishedProject) {
+    if (stars > 5000 && sumTop10 < 500) {
+      deduct(15, 'stars-vs-substance', 'red',
+        'Stars vs substance: ' + stars.toLocaleString() +
+        ' stars but only ' + sumTop10 + ' total contributions from the top 10 contributors.');
+    }
+    if (stars > 20000 && contributors.length < 3) {
+      deduct(15, 'stars-vs-contributors', 'red',
+        'Stars vs substance: ' + stars.toLocaleString() +
+        ' stars but only ' + contributors.length + ' contributor' +
+        (contributors.length === 1 ? '' : 's') + ' listed.');
+    }
   }
 
-  // Releases.
-  if (stars > 2000 && !data.hasRelease) {
+  // Releases — tags count as releases (kernel-style projects tag versions
+  // without ever publishing GitHub releases).
+  if (stars > 2000 && !data.hasRelease && !data.hasTags) {
     deduct(10, 'no-releases', 'amber',
-      'No releases despite ' + stars.toLocaleString() + ' stars.');
+      'No releases or tags despite ' + stars.toLocaleString() + ' stars.');
   }
 
   // Staleness.

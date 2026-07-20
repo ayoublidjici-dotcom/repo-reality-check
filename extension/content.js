@@ -14,6 +14,9 @@
   ]);
 
   const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+  // Bump when the data shape or scoring rules change, so cached results
+  // computed under old rules are refetched instead of shown for up to 6h.
+  const CACHE_VERSION = 2;
   const PANEL_ID = 'rrc-panel';
 
   // Token used to discard stale async work after SPA navigation.
@@ -122,16 +125,36 @@
       apiFetch(api + '/readme', 'application/vnd.github.raw', token)
     ]);
 
+    // GitHub refuses to list contributors for very large repos (403 "list too
+    // large", e.g. torvalds/linux). Record that so scoring doesn't mistake
+    // "no data" for "no contributors".
     let contributors = [];
-    if (contribRes.ok && contribRes.status !== 204) {
-      const body = await contribRes.text();
-      if (body) contributors = JSON.parse(body);
+    let contributorsUnavailable = false;
+    if (contribRes.ok) {
+      if (contribRes.status !== 204) {
+        const body = await contribRes.text();
+        if (body) contributors = JSON.parse(body);
+      }
+    } else {
+      contributorsUnavailable = true;
     }
 
     let hasRelease = false;
     if (releasesRes.ok) {
       const releases = await releasesRes.json();
       hasRelease = Array.isArray(releases) && releases.length > 0;
+    }
+
+    // Tags are a release signal too (kernel-style projects tag versions but
+    // never publish GitHub releases). Only worth a request when releases came
+    // back empty and the repo is big enough for scoring to care.
+    let hasTags = false;
+    if (!hasRelease && repoData.stargazers_count > 2000) {
+      const tagsRes = await apiFetch(api + '/tags?per_page=1', null, token);
+      if (tagsRes.ok) {
+        const tags = await tagsRes.json();
+        hasTags = Array.isArray(tags) && tags.length > 0;
+      }
     }
 
     let readme = null;
@@ -163,7 +186,9 @@
       contributors: (contributors || []).map((c) => ({
         login: c.login, contributions: c.contributions
       })),
+      contributorsUnavailable,
       hasRelease,
+      hasTags,
       readme: readme ? readme.slice(0, 200000) : null,
       starBurst
     };
@@ -322,7 +347,8 @@
     try {
       if (!force) {
         const cached = (await storageGet([cacheKey]))[cacheKey];
-        if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+        if (cached && cached.v === CACHE_VERSION &&
+            Date.now() - cached.cachedAt < CACHE_TTL_MS) {
           if (seq !== loadSeq) return;
           renderPanel(target.full, cached.result, cached.cachedAt, true);
           return;
@@ -339,7 +365,7 @@
 
       const result = computeScore(data);
       const cachedAt = Date.now();
-      await storageSet({ [cacheKey]: { data, result, cachedAt } });
+      await storageSet({ [cacheKey]: { v: CACHE_VERSION, data, result, cachedAt } });
       if (seq !== loadSeq) return;
       renderPanel(target.full, result, cachedAt, false);
     } catch (e) {

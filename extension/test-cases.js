@@ -69,6 +69,71 @@ function runScoringTests(computeScore) {
   check('healthy repo: score >= 80', healthy.score >= 80, 'score=' + healthy.score);
   check('healthy repo: green band', healthy.band.key === 'green', 'band=' + healthy.band.key);
 
+  // --- torvalds/linux fixture: huge, old, tags-only, contributors API refuses --
+  // GitHub returns 403 "list too large" for the contributors endpoint and the
+  // kernel publishes tags, never GitHub releases. Must NOT trip
+  // stars-vs-substance (either variant) or no-releases.
+  const linux = computeScore({
+    repo: {
+      stargazers_count: 195000,
+      created_at: '2011-09-04T22:48:12Z',
+      pushed_at: '2026-07-18T00:00:00Z',
+      archived: false,
+      fork: false,
+      license: { spdx_id: 'GPL-2.0', name: 'GNU General Public License v2.0' }
+    },
+    contributors: [],
+    contributorsUnavailable: true,
+    hasRelease: false,
+    hasTags: true,
+    readme: 'Linux kernel source tree.',
+    starBurst: false,
+    now: NOW
+  });
+  const linuxIds = linux.reasons.map(r => r.id);
+  check('linux fixture: score >= 80', linux.score >= 80, 'score=' + linux.score);
+  check('linux fixture: green band', linux.band.key === 'green', 'band=' + linux.band.key);
+  check('linux fixture: no stars-vs-substance flags',
+    !linuxIds.includes('stars-vs-substance') && !linuxIds.includes('stars-vs-contributors'),
+    'reasons=[' + linuxIds.join(', ') + ']');
+  check('linux fixture: no no-releases flag (tags exist)',
+    !linuxIds.includes('no-releases'),
+    'reasons=[' + linuxIds.join(', ') + ']');
+
+  // Tags alone must not excuse a repo that has neither releases nor tags.
+  const noTagsNoReleases = computeScore({
+    repo: { stargazers_count: 3000, created_at: '2025-06-01T00:00:00Z', pushed_at: '2026-07-01T00:00:00Z', license: { spdx_id: 'MIT' } },
+    contributors: [{ login: 'a', contributions: 400 }, { login: 'b', contributions: 300 }],
+    hasRelease: false, hasTags: false, readme: '', starBurst: false, now: NOW
+  });
+  check('no releases AND no tags still deducts 10',
+    noTagsNoReleases.reasons.some(r => r.id === 'no-releases' && r.points === 10),
+    JSON.stringify(noTagsNoReleases.reasons));
+
+  // Old (5y+) project with a full top-10 roster is exempt from
+  // stars-vs-substance even with a modest top-10 sum...
+  const tenSmallContributors = Array.from({ length: 10 }, (_, i) => (
+    { login: 'c' + i, contributions: 40 - i }
+  ));
+  const oldEstablished = computeScore({
+    repo: { stargazers_count: 50000, created_at: '2010-01-01T00:00:00Z', pushed_at: '2026-07-01T00:00:00Z', license: { spdx_id: 'MIT' } },
+    contributors: tenSmallContributors,
+    hasRelease: true, hasTags: true, readme: '', starBurst: false, now: NOW
+  });
+  check('old established project exempt from stars-vs-substance',
+    !oldEstablished.reasons.some(r => r.id === 'stars-vs-substance'),
+    JSON.stringify(oldEstablished.reasons));
+
+  // ...but a young repo with the same numbers still gets flagged.
+  const youngThin = computeScore({
+    repo: { stargazers_count: 50000, created_at: '2025-06-01T00:00:00Z', pushed_at: '2026-07-01T00:00:00Z', license: { spdx_id: 'MIT' } },
+    contributors: tenSmallContributors,
+    hasRelease: true, hasTags: true, readme: '', starBurst: false, now: NOW
+  });
+  check('young repo with thin contributions still flagged',
+    youngThin.reasons.some(r => r.id === 'stars-vs-substance'),
+    JSON.stringify(youngThin.reasons.map(r => r.id)));
+
   // --- Bus factor thresholds -------------------------------------------------
   const bus91 = computeScore({
     repo: { stargazers_count: 100, pushed_at: '2026-07-01T00:00:00Z', license: { spdx_id: 'MIT' } },

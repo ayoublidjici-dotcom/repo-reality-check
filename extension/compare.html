@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Repo Reality Check — Compare</title>
+<style>
+  :root {
+    --border: #d1d9e0; --bg: #ffffff; --bg-muted: #f6f8fa;
+    --fg: #1f2328; --fg-muted: #59636e;
+    --green: #1a7f37; --amber: #9a6700; --red: #d1242f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --border: #3d444d; --bg: #0d1117; --bg-muted: #151b23;
+      --fg: #f0f6fc; --fg-muted: #9198a1;
+      --green: #3fb950; --amber: #d29922; --red: #f85149;
+    }
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    max-width: 860px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    color: var(--fg);
+    background: var(--bg);
+  }
+  h1 { font-size: 20px; }
+  .inputs { display: flex; gap: 8px; align-items: center; margin: 1rem 0; flex-wrap: wrap; }
+  .inputs input {
+    flex: 1 1 200px;
+    padding: 6px 10px;
+    font-size: 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+  }
+  .inputs button {
+    padding: 6px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+    background: #1f883d;
+    border: 1px solid rgba(31, 35, 40, 0.15);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  th, td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: top;
+  }
+  th:first-child, td:first-child { color: var(--fg-muted); width: 220px; font-weight: 500; }
+  thead th { font-size: 14px; }
+  .score { font-size: 24px; font-weight: 700; }
+  .band-green { color: var(--green); font-weight: 600; }
+  .band-amber { color: var(--amber); font-weight: 600; }
+  .band-red { color: var(--red); font-weight: 600; }
+  .muted { color: var(--fg-muted); font-size: 12px; }
+  .reasons { margin: 0; padding-left: 1.1em; }
+  .reasons li { margin: 2px 0; }
+  #status { color: var(--fg-muted); font-size: 13px; min-height: 1.2em; }
+  #pro-gate { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-muted); padding: 12px 16px; }
+  a { color: var(--fg); }
+</style>
+</head>
+<body>
+<h1>Repo Reality Check — Compare</h1>
+
+<div id="pro-gate" hidden>
+  Comparing repos is a <strong>Pro</strong> feature.
+  <a href="options.html#pro">Learn about Pro</a> ·
+  <a href="https://ayoublidjici-dotcom.github.io/#pricing">Pricing</a>
+</div>
+
+<div id="app" hidden>
+  <div class="inputs">
+    <input id="left" placeholder="owner/repo" spellcheck="false">
+    <span>vs</span>
+    <input id="right" placeholder="owner/repo" spellcheck="false">
+    <button id="go">Compare</button>
+  </div>
+  <p id="status"></p>
+  <table id="table" hidden>
+    <thead>
+      <tr><th></th><th id="head-left"></th><th id="head-right"></th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<script src="scoring.js"></script>
+<script src="pro.js"></script>
+<script src="common.js"></script>
+<script src="compare.js"></script>
+</body>
+</html>

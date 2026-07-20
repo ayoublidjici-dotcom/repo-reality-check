@@ -1,0 +1,10 @@
+{
+  "name": "rrc-e2e",
+  "private": true,
+  "scripts": {
+    "test": "node run-e2e.js"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.61.1"
+  }
+}

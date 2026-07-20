@@ -1,200 +1,23 @@
 /*
- * Repo Reality Check — content script.
- * Detects repo root pages, fetches GitHub API data (cached 6h), scores via
- * computeScore (scoring.js, loaded before this file), and injects the panel.
+ * Repo Reality Check — content script (repo root pages).
+ * Detects repo root pages, scores them via the shared RRC pipeline
+ * (common.js: fetch + 6h cache + computeScore), and injects the panel.
  */
 
 (() => {
   'use strict';
 
-  const RESERVED_OWNERS = new Set([
-    'settings', 'search', 'marketplace', 'topics', 'orgs', 'sponsors',
-    'notifications', 'explore', 'codespaces', 'features', 'pulls', 'issues',
-    'about', 'pricing', 'login', 'join'
-  ]);
-
-  const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-  // Bump when the data shape or scoring rules change, so cached results
-  // computed under old rules are refetched instead of shown for up to 6h.
-  const CACHE_VERSION = 2;
   const PANEL_ID = 'rrc-panel';
 
   // Token used to discard stale async work after SPA navigation.
   let loadSeq = 0;
 
-  // ---------- page detection -------------------------------------------------
-
   function getRepoFromUrl() {
     if (location.hostname !== 'github.com') return null;
-    const parts = location.pathname.split('/').filter(Boolean);
-    if (parts.length !== 2) return null; // repo root only in v1
-    const [owner, repo] = parts;
-    if (RESERVED_OWNERS.has(owner.toLowerCase())) return null;
-    return { owner, repo, full: owner + '/' + repo };
+    return RRC.parseRepoPath(location.pathname); // repo root only in v1
   }
 
-  // ---------- storage helpers ------------------------------------------------
-
-  function storageGet(keys) {
-    return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
-  }
-
-  function storageSet(obj) {
-    return new Promise((resolve) => chrome.storage.local.set(obj, resolve));
-  }
-
-  // ---------- GitHub API -----------------------------------------------------
-
-  class RateLimitError extends Error {}
-
-  async function apiFetch(url, accept, token) {
-    const headers = { Accept: accept || 'application/vnd.github+json' };
-    if (token) headers.Authorization = 'Bearer ' + token;
-    const res = await fetch(url, { headers });
-    if ((res.status === 403 || res.status === 429) &&
-        res.headers.get('x-ratelimit-remaining') === '0') {
-      throw new RateLimitError('GitHub rate limit reached');
-    }
-    return res;
-  }
-
-  /*
-   * Star-burst sampling (approximate). Only called when stars > 5000.
-   * Fetches the FIRST stargazer page and, via the Link rel="last" header,
-   * the LAST page — two requests max. The list is ordered oldest→newest,
-   * so page 1 holds the earliest stars and the last page the newest.
-   */
-  async function sampleStarBurst(owner, repo, repoData, token) {
-    const base = 'https://api.github.com/repos/' + owner + '/' + repo +
-      '/stargazers?per_page=100';
-    const accept = 'application/vnd.github.star+json';
-
-    const first = await apiFetch(base + '&page=1', accept, token);
-    if (!first.ok) return false;
-    const firstPage = await first.json();
-
-    let lastPage = firstPage;
-    const link = first.headers.get('Link') || '';
-    const m = link.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/);
-    if (m) {
-      const res = await apiFetch(base + '&page=' + m[1], accept, token);
-      if (!res.ok) return false;
-      lastPage = await res.json();
-    }
-
-    const times = (page) => page
-      .map((s) => Date.parse(s.starred_at))
-      .filter((t) => !isNaN(t))
-      .sort((a, b) => a - b);
-    const firstTimes = times(firstPage);
-    const lastTimes = times(lastPage);
-    if (!firstTimes.length || !lastTimes.length) return false;
-
-    const DAY = 86400000;
-    const ageDays = (Date.now() - Date.parse(repoData.created_at)) / DAY;
-    if (ageDays < 90) return false; // "months old" — young repos get a pass
-
-    const oldestStar = firstTimes[0];
-    const newestStar = lastTimes[lastTimes.length - 1];
-    const totalSpanDays = (newestStar - oldestStar) / DAY;
-
-    // Case A: every sampled star — oldest to newest — fits in ~14 days on an
-    // old repo: essentially the whole star count arrived in one burst.
-    if (totalSpanDays <= 14) return true;
-
-    // Case B: the newest 100 stars arrived so fast that the same rate over a
-    // 14-day window would account for >30% of all stars.
-    const lastSpanDays = Math.max(
-      (lastTimes[lastTimes.length - 1] - lastTimes[0]) / DAY, 0.02);
-    const recentRatePerDay = lastTimes.length / lastSpanDays;
-    if (recentRatePerDay * 14 > 0.3 * repoData.stargazers_count) return true;
-
-    return false;
-  }
-
-  async function fetchRepoData(owner, repo, token) {
-    const api = 'https://api.github.com/repos/' + owner + '/' + repo;
-
-    const repoRes = await apiFetch(api, null, token);
-    if (!repoRes.ok) return null; // 404 etc. — not a scoreable repo page
-    const repoData = await repoRes.json();
-
-    const [contribRes, releasesRes, readmeRes] = await Promise.all([
-      apiFetch(api + '/contributors?per_page=10', null, token),
-      apiFetch(api + '/releases?per_page=1', null, token),
-      apiFetch(api + '/readme', 'application/vnd.github.raw', token)
-    ]);
-
-    // GitHub refuses to list contributors for very large repos (403 "list too
-    // large", e.g. torvalds/linux). Record that so scoring doesn't mistake
-    // "no data" for "no contributors".
-    let contributors = [];
-    let contributorsUnavailable = false;
-    if (contribRes.ok) {
-      if (contribRes.status !== 204) {
-        const body = await contribRes.text();
-        if (body) contributors = JSON.parse(body);
-      }
-    } else {
-      contributorsUnavailable = true;
-    }
-
-    let hasRelease = false;
-    if (releasesRes.ok) {
-      const releases = await releasesRes.json();
-      hasRelease = Array.isArray(releases) && releases.length > 0;
-    }
-
-    // Tags are a release signal too (kernel-style projects tag versions but
-    // never publish GitHub releases). Only worth a request when releases came
-    // back empty and the repo is big enough for scoring to care.
-    let hasTags = false;
-    if (!hasRelease && repoData.stargazers_count > 2000) {
-      const tagsRes = await apiFetch(api + '/tags?per_page=1', null, token);
-      if (tagsRes.ok) {
-        const tags = await tagsRes.json();
-        hasTags = Array.isArray(tags) && tags.length > 0;
-      }
-    }
-
-    let readme = null;
-    if (readmeRes.ok) readme = await readmeRes.text();
-
-    let starBurst = false;
-    if (repoData.stargazers_count > 5000) {
-      try {
-        starBurst = await sampleStarBurst(owner, repo, repoData, token);
-      } catch (e) {
-        if (e instanceof RateLimitError) throw e;
-        // Sampling is best-effort; any other failure just skips the flag.
-      }
-    }
-
-    return {
-      repo: {
-        stargazers_count: repoData.stargazers_count,
-        forks_count: repoData.forks_count,
-        created_at: repoData.created_at,
-        pushed_at: repoData.pushed_at,
-        archived: repoData.archived,
-        fork: repoData.fork,
-        license: repoData.license
-          ? { spdx_id: repoData.license.spdx_id, name: repoData.license.name }
-          : null,
-        parent: repoData.parent ? { full_name: repoData.parent.full_name } : undefined
-      },
-      contributors: (contributors || []).map((c) => ({
-        login: c.login, contributions: c.contributions
-      })),
-      contributorsUnavailable,
-      hasRelease,
-      hasTags,
-      readme: readme ? readme.slice(0, 200000) : null,
-      starBurst
-    };
-  }
-
-  // ---------- panel rendering --------------------------------------------------
+  // ---------- panel rendering ------------------------------------------------
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -220,12 +43,55 @@
     if (mount) mount.prepend(panel);
   }
 
-  function openSettings(e) {
-    e.preventDefault();
-    window.open(chrome.runtime.getURL('options.html'));
+  function openExtensionPage(page, hashOrQuery) {
+    window.open(chrome.runtime.getURL(page) + (hashOrQuery || ''));
   }
 
-  function renderPanel(repoFull, result, cachedAt, fromCache) {
+  function openSettings(e) {
+    e.preventDefault();
+    openExtensionPage('options.html');
+  }
+
+  // Disabled Pro affordance: label + small "Pro" tag, click explains Pro.
+  function proLocked(label) {
+    const btn = el('button', 'rrc-link rrc-pro-locked', label);
+    btn.type = 'button';
+    btn.title = 'Repo Reality Check Pro feature';
+    btn.appendChild(el('span', 'rrc-pro-tag', 'Pro'));
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      openExtensionPage('options.html', '#pro');
+    });
+    return btn;
+  }
+
+  function watchButton(repoFull, result, cachedAt, ctx) {
+    if (!ctx.pro) return proLocked('☆ watch');
+    const btn = el('button', 'rrc-link rrc-watch',
+      ctx.watched ? '★ watching' : '☆ watch');
+    btn.type = 'button';
+    btn.title = 'Watch this repo: weekly re-check with a notification if its band changes';
+    btn.addEventListener('click', async () => {
+      const list = (await RRC.storageGet(['rrcWatchlist'])).rrcWatchlist || {};
+      if (list[repoFull]) {
+        delete list[repoFull];
+        ctx.watched = false;
+      } else {
+        list[repoFull] = {
+          addedAt: Date.now(),
+          score: result.score,
+          band: result.band.key,
+          checkedAt: cachedAt
+        };
+        ctx.watched = true;
+      }
+      await RRC.storageSet({ rrcWatchlist: list });
+      btn.textContent = ctx.watched ? '★ watching' : '☆ watch';
+    });
+    return btn;
+  }
+
+  function renderPanel(repoFull, result, cachedAt, fromCache, ctx) {
     const panel = el('section', 'rrc');
     panel.id = PANEL_ID;
     panel.dataset.rrcRepo = repoFull;
@@ -297,6 +163,23 @@
     settings.href = '#';
     settings.addEventListener('click', openSettings);
     footer.appendChild(settings);
+
+    // Pro affordances: compare + watch.
+    footer.appendChild(el('span', 'rrc-dot', '·'));
+    if (ctx.pro) {
+      const compare = el('a', 'rrc-link', 'compare');
+      compare.href = '#';
+      compare.addEventListener('click', (e) => {
+        e.preventDefault();
+        openExtensionPage('compare.html', '?left=' + encodeURIComponent(repoFull));
+      });
+      footer.appendChild(compare);
+    } else {
+      footer.appendChild(proLocked('compare'));
+    }
+    footer.appendChild(el('span', 'rrc-dot', '·'));
+    footer.appendChild(watchButton(repoFull, result, cachedAt, ctx));
+
     detail.appendChild(footer);
 
     panel.appendChild(detail);
@@ -342,35 +225,25 @@
     if (existing && existing.dataset.rrcRepo === target.full && !force) return;
 
     const seq = ++loadSeq;
-    const cacheKey = 'rrc-cache:' + target.full;
 
     try {
-      if (!force) {
-        const cached = (await storageGet([cacheKey]))[cacheKey];
-        if (cached && cached.v === CACHE_VERSION &&
-            Date.now() - cached.cachedAt < CACHE_TTL_MS) {
-          if (seq !== loadSeq) return;
-          renderPanel(target.full, cached.result, cached.cachedAt, true);
-          return;
-        }
-      }
+      const [pro, wl] = await Promise.all([
+        isPro(),
+        RRC.storageGet(['rrcWatchlist'])
+      ]);
+      const watchlist = wl.rrcWatchlist || {};
 
-      const token = (await storageGet(['githubToken'])).githubToken || '';
-      const data = await fetchRepoData(target.owner, target.repo, token);
+      const res = await RRC.scoreAndCache(target.owner, target.repo, { force });
       if (seq !== loadSeq) return; // user navigated away mid-fetch
-      if (!data) {
+      if (!res) {
         removePanel();
         return;
       }
-
-      const result = computeScore(data);
-      const cachedAt = Date.now();
-      await storageSet({ [cacheKey]: { v: CACHE_VERSION, data, result, cachedAt } });
-      if (seq !== loadSeq) return;
-      renderPanel(target.full, result, cachedAt, false);
+      renderPanel(target.full, res.result, res.cachedAt, res.fromCache,
+        { pro, watched: !!watchlist[target.full] });
     } catch (e) {
       if (seq !== loadSeq) return;
-      if (e instanceof RateLimitError) {
+      if (e instanceof RRC.RateLimitError) {
         renderRateLimited(target.full);
       } else {
         // Network hiccup etc. — stay quiet rather than break the page.

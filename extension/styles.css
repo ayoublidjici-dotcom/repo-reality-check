@@ -1,0 +1,209 @@
+/* Repo Reality Check panel — follows GitHub's visual language.
+   Light values are the defaults; dark values come from GitHub's
+   data-color-mode attribute, falling back to prefers-color-scheme. */
+
+.rrc {
+  --rrc-border: #d1d9e0;
+  --rrc-bg: #ffffff;
+  --rrc-bg-muted: #f6f8fa;
+  --rrc-fg: #1f2328;
+  --rrc-fg-muted: #59636e;
+  --rrc-green: #1a7f37;
+  --rrc-green-bg: #dafbe1;
+  --rrc-amber: #9a6700;
+  --rrc-amber-bg: #fff8c5;
+  --rrc-red: #d1242f;
+  --rrc-red-bg: #ffebe9;
+
+  box-sizing: border-box;
+  margin: 0 0 16px;
+  border: 1px solid var(--rrc-border);
+  border-radius: 6px;
+  background: var(--rrc-bg);
+  color: var(--rrc-fg);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow: hidden;
+}
+
+.rrc *, .rrc *::before, .rrc *::after { box-sizing: inherit; }
+
+@media (prefers-color-scheme: dark) {
+  .rrc {
+    --rrc-border: #3d444d;
+    --rrc-bg: #0d1117;
+    --rrc-bg-muted: #151b23;
+    --rrc-fg: #f0f6fc;
+    --rrc-fg-muted: #9198a1;
+    --rrc-green: #3fb950;
+    --rrc-green-bg: rgba(46, 160, 67, 0.15);
+    --rrc-amber: #d29922;
+    --rrc-amber-bg: rgba(187, 128, 9, 0.15);
+    --rrc-red: #f85149;
+    --rrc-red-bg: rgba(248, 81, 73, 0.15);
+  }
+}
+
+/* GitHub's explicit theme choice wins over the OS preference. */
+html[data-color-mode="light"] .rrc {
+  --rrc-border: #d1d9e0;
+  --rrc-bg: #ffffff;
+  --rrc-bg-muted: #f6f8fa;
+  --rrc-fg: #1f2328;
+  --rrc-fg-muted: #59636e;
+  --rrc-green: #1a7f37;
+  --rrc-green-bg: #dafbe1;
+  --rrc-amber: #9a6700;
+  --rrc-amber-bg: #fff8c5;
+  --rrc-red: #d1242f;
+  --rrc-red-bg: #ffebe9;
+}
+
+html[data-color-mode="dark"] .rrc {
+  --rrc-border: #3d444d;
+  --rrc-bg: #0d1117;
+  --rrc-bg-muted: #151b23;
+  --rrc-fg: #f0f6fc;
+  --rrc-fg-muted: #9198a1;
+  --rrc-green: #3fb950;
+  --rrc-green-bg: rgba(46, 160, 67, 0.15);
+  --rrc-amber: #d29922;
+  --rrc-amber-bg: rgba(187, 128, 9, 0.15);
+  --rrc-red: #f85149;
+  --rrc-red-bg: rgba(248, 81, 73, 0.15);
+}
+
+/* ---- top bar ---- */
+
+.rrc-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+.rrc-left {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.rrc-score {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rrc-band-green .rrc-score, .rrc-band-green .rrc-band-label { color: var(--rrc-green); }
+.rrc-band-amber .rrc-score, .rrc-band-amber .rrc-band-label { color: var(--rrc-amber); }
+.rrc-band-red .rrc-score, .rrc-band-red .rrc-band-label { color: var(--rrc-red); }
+
+.rrc-band-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rrc-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.rrc-chip {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 2em;
+  border: 1px solid transparent;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.rrc-chip-red { color: var(--rrc-red); background: var(--rrc-red-bg); }
+.rrc-chip-amber { color: var(--rrc-amber); background: var(--rrc-amber-bg); }
+
+.rrc-toggle {
+  flex-shrink: 0;
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--rrc-fg-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.rrc-toggle:hover { background: var(--rrc-bg-muted); color: var(--rrc-fg); }
+
+.rrc-chevron { display: inline-block; transition: transform 0.15s ease; }
+.rrc-open .rrc-chevron { transform: rotate(180deg); }
+
+/* ---- expanded detail ---- */
+
+.rrc-detail {
+  border-top: 1px solid var(--rrc-border);
+  background: var(--rrc-bg-muted);
+  padding: 8px 12px;
+}
+
+.rrc-reasons {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.rrc-reason {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+
+.rrc-points {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+}
+
+.rrc-reason-red .rrc-points, .rrc-reason-red .rrc-reason-text { color: var(--rrc-red); }
+.rrc-reason-amber .rrc-points, .rrc-reason-amber .rrc-reason-text { color: var(--rrc-amber); }
+.rrc-reason-neutral .rrc-reason-text { color: var(--rrc-fg-muted); }
+
+.rrc-footer {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--rrc-fg-muted);
+  border-top: 1px solid var(--rrc-border);
+  padding-top: 8px;
+}
+
+.rrc-dot { user-select: none; }
+
+.rrc-link {
+  color: var(--rrc-fg-muted);
+  text-decoration: none;
+}
+
+.rrc-link:hover { color: var(--rrc-fg); text-decoration: underline; }
+
+/* ---- degraded (rate-limited) state ---- */
+
+.rrc-degraded .rrc-bar { color: var(--rrc-amber); }
+.rrc-degraded-text { flex: 1 1 auto; }
+
+/* Narrow viewports: let the bar wrap instead of overflowing GitHub's column. */
+@media (max-width: 543px) {
+  .rrc-bar { flex-wrap: wrap; }
+  .rrc-chips { flex-basis: 100%; order: 3; }
+}

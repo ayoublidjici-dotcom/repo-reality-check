@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Repo Reality Check",
+  "version": "0.1.0",
+  "description": "Scores GitHub repositories for credibility: bus factor, star anomalies, staleness, README red flags, and license warnings.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://api.github.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*"],
+      "js": ["scoring.js", "content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["options.html"],
+      "matches": ["https://github.com/*"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

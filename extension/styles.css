@@ -2,7 +2,7 @@
    Light values are the defaults; dark values come from GitHub's
    data-color-mode attribute, falling back to prefers-color-scheme. */
 
-.rrc {
+.rrc, .rrc-badge, .rrc-notice {
   --rrc-border: #d1d9e0;
   --rrc-bg: #ffffff;
   --rrc-bg-muted: #f6f8fa;
@@ -14,7 +14,9 @@
   --rrc-amber-bg: #fff8c5;
   --rrc-red: #d1242f;
   --rrc-red-bg: #ffebe9;
+}
 
+.rrc {
   box-sizing: border-box;
   margin: 0 0 16px;
   border: 1px solid var(--rrc-border);
@@ -29,7 +31,7 @@
 .rrc *, .rrc *::before, .rrc *::after { box-sizing: inherit; }
 
 @media (prefers-color-scheme: dark) {
-  .rrc {
+  .rrc, .rrc-badge, .rrc-notice {
     --rrc-border: #3d444d;
     --rrc-bg: #0d1117;
     --rrc-bg-muted: #151b23;
@@ -45,7 +47,7 @@
 }
 
 /* GitHub's explicit theme choice wins over the OS preference. */
-html[data-color-mode="light"] .rrc {
+html[data-color-mode="light"] :is(.rrc, .rrc-badge, .rrc-notice) {
   --rrc-border: #d1d9e0;
   --rrc-bg: #ffffff;
   --rrc-bg-muted: #f6f8fa;
@@ -59,7 +61,7 @@ html[data-color-mode="light"] .rrc {
   --rrc-red-bg: #ffebe9;
 }
 
-html[data-color-mode="dark"] .rrc {
+html[data-color-mode="dark"] :is(.rrc, .rrc-badge, .rrc-notice) {
   --rrc-border: #3d444d;
   --rrc-bg: #0d1117;
   --rrc-bg-muted: #151b23;
@@ -207,3 +209,79 @@ html[data-color-mode="dark"] .rrc {
   .rrc-bar { flex-wrap: wrap; }
   .rrc-chips { flex-basis: 100%; order: 3; }
 }
+
+/* ---- footer buttons (watch / locked Pro affordances) ---- */
+
+button.rrc-link {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+button.rrc-link:hover { color: var(--rrc-fg); text-decoration: underline; }
+
+.rrc-pro-locked {
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+.rrc-pro-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-radius: 2em;
+  color: var(--rrc-amber);
+  background: var(--rrc-amber-bg);
+}
+
+/* ---- inline score badges (search results / trending, Pro) ---- */
+
+.rrc-badge {
+  box-sizing: border-box;
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--rrc-border);
+  border-radius: 2em;
+  background: var(--rrc-bg-muted);
+  color: var(--rrc-fg-muted);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  vertical-align: middle;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.rrc-badge-green { color: var(--rrc-green); background: var(--rrc-green-bg); border-color: transparent; }
+.rrc-badge-amber { color: var(--rrc-amber); background: var(--rrc-amber-bg); border-color: transparent; }
+.rrc-badge-red { color: var(--rrc-red); background: var(--rrc-red-bg); border-color: transparent; }
+
+.rrc-badge[data-state="plus"],
+.rrc-badge[data-state="locked"] { cursor: pointer; }
+
+.rrc-badge[data-state="plus"]:hover,
+.rrc-badge[data-state="locked"]:hover { color: var(--rrc-fg); }
+
+/* ---- one-line notice on search/trending (no-token mode) ---- */
+
+.rrc-notice {
+  box-sizing: border-box;
+  margin: 8px 0;
+  padding: 6px 12px;
+  border: 1px solid var(--rrc-border);
+  border-radius: 6px;
+  background: var(--rrc-bg-muted);
+  color: var(--rrc-fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.rrc-notice a { color: var(--rrc-fg); }
